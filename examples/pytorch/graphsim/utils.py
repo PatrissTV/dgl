@@ -12,7 +12,6 @@ matplotlib.use("agg")
 
 
 def make_video(xy, filename):
-    os.system("rm -rf pics/*")
     FFMpegWriter = manimation.writers["ffmpeg"]
     metadata = dict(
         title="Movie Test", artist="Matplotlib", comment="Movie support!"

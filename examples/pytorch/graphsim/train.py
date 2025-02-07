@@ -1,9 +1,7 @@
 import argparse
 import time
 import traceback
-
-import dgl
-
+from dgl import from_networkx
 import networkx as nx
 import numpy as np
 import torch
@@ -17,6 +15,7 @@ from models import InteractionNet, MLP, PrepareLayer
 from torch.utils.data import DataLoader
 from utils import make_video
 
+import wandb
 
 def train(
     optimizer, loss_fn, reg_fn, model, prep, dataloader, lambda_reg, device
@@ -85,7 +84,7 @@ def eval(loss_fn, model, prep, dataloader, device):
 def eval_rollout(model, prep, initial_frame, n_object, device):
     current_frame = initial_frame.to(device)
     base_graph = nx.complete_graph(n_object)
-    graph = dgl.from_networkx(base_graph).to(device)
+    graph = from_networkx(base_graph).to(device)
     pos_buffer = []
     model.eval()
     for step in range(100):
@@ -101,10 +100,22 @@ def eval_rollout(model, prep, initial_frame, n_object, device):
         )
         current_frame[:, [1, 2]] += v_pred * 0.001
         current_frame[:, 3:5] = v_pred
-        pos_buffer.append(current_frame[:, [1, 2]].cpu().numpy())
+        pos_buffer.append(current_frame[:, [1, 2]].detach().numpy())
     pos_buffer = np.vstack(pos_buffer).reshape(100, n_object, -1)
     make_video(pos_buffer, "video_model.mp4")
 
+def visualize(model,epoch):
+    if args.visualize:
+        eval_rollout(
+            model,
+            prepare_layer,
+            test_data.first_frame,
+            test_data.n_particles,
+            device,
+        )
+        make_video(test_data.test_traj[:100, :, [1, 2]], "video_truth.mp4")
+        wandb.log({"epoch": epoch, "video_model": wandb.Video("video_model.mp4"), "video_truth": wandb.Video("video_truth.mp4")})
+    
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
@@ -135,6 +146,10 @@ if __name__ == "__main__":
         default=False,
         help="Whether enable trajectory rollout mode for visualization",
     )
+    argparser.add_argument(
+        "--wandb", action="store_true", default=False, help="Whether enable wandb logging"
+    )
+
     args = argparser.parse_args()
 
     # Select Device to be CPU or GPU
@@ -203,6 +218,17 @@ if __name__ == "__main__":
 
     loss_fn = torch.nn.MSELoss()
     reg_fn = torch.nn.MSELoss(reduction="sum")
+
+    if args.wandb:
+        wandb.init(
+            # set the wandb project where this run will be logged
+            project="gnn-replication",
+            # track hyperparameters and run metadata
+            config={
+            "args": args
+            }
+        )
+
     try:
         for e in range(args.epochs):
             last_t = time.time()
@@ -216,7 +242,8 @@ if __name__ == "__main__":
                 args.lambda_reg,
                 device,
             )
-            print("Epoch time: ", time.time() - last_t)
+            epoch_time = time.time() - last_t
+            print("Epoch time: ", epoch_time)
             if e % 1 == 0:
                 valid_loss = eval(
                     loss_fn,
@@ -232,20 +259,18 @@ if __name__ == "__main__":
                     test_full_dataloader,
                     device,
                 )
+                wandb.log({"epoch": e, "loss": loss, "valid_loss": valid_loss, "test_full_loss": test_full_loss, "epoch_time": epoch_time})
                 print(
                     "Epoch: {}.Loss: Valid: {} Full: {}".format(
                         e, valid_loss, test_full_loss
                     )
                 )
+
+            if e % 10 == 0:
+                visualize(interaction_net, e)
     except:
         traceback.print_exc()
     finally:
-        if args.visualize:
-            eval_rollout(
-                interaction_net,
-                prepare_layer,
-                test_data.first_frame,
-                test_data.n_particles,
-                device,
-            )
-            make_video(test_data.test_traj[:100, :, [1, 2]], "video_truth.mp4")
+        torch.save(interaction_net.state_dict(), "model.pth")
+        visualize(interaction_net, args.epochs)
+        wandb.finish()

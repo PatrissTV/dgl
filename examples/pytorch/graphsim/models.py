@@ -1,9 +1,7 @@
 import copy
 from functools import partial
 
-import dgl
 import dgl.function as fn
-import dgl.nn as dglnn
 
 import torch
 import torch.nn as nn
@@ -65,7 +63,7 @@ class PrepareLayer(nn.Module):
         with g.local_scope():
             node_feature = self.normalize_input(node_feature)
             g.ndata["feat"] = node_feature  # Only dynamic feature
-            g.apply_edges(fn.u_sub_v("feat", "feat", "e"))
+            g.apply_edges(fn.u_sub_v("feat", "feat", "e")) #computes difference between target node and source node features and stores in edge feature
             edge_feature = g.edata["e"]
             return node_feature, edge_feature
 
@@ -111,7 +109,7 @@ class InteractionNet(nn.Module):
     def forward(self, g, n_feat, e_feat, global_feats, relation_feats):
         with g.local_scope():
             out_n, out_e = self.in_layer(
-                g, n_feat, e_feat, global_feats, relation_feats
+                g, n_feat, e_feat, global_feats, relation_feats #TODO: Its not using residual method!
             )
             out_n = self.denormalize_output(out_n)
             return out_n, out_e

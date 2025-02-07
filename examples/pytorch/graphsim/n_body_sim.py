@@ -111,9 +111,9 @@ def gen(n_body, num_steps, orbit):
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("--num_bodies", type=int, default=6)
+    argparser.add_argument("--num_bodies", type=int, default=3)
     argparser.add_argument("--num_traj", type=int, default=10)
-    argparser.add_argument("--steps", type=int, default=1000)
+    argparser.add_argument("--steps", type=int, default=3000)
     argparser.add_argument("--data_path", type=str, default="data")
 
     args = argparser.parse_args()
